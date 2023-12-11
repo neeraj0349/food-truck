@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Truck Map</title>
+    <!-- Include Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+    <!-- Include Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <style>
+        /* Add any additional styles for your page here */
+        #map {
+            height: 100vh; /* Full-height map */
+        }
+
+        #searchContainer {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            width: 20%;
+            z-index: 1000; /* Place the container on top */
+        }
+
+        #results {
+            margin-top: 10px;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1000; /* Place the results on top */
+            max-height: 500px; /* Set a maximum height for the results container */
+            overflow-y: auto;
+        }
+
+        #leaflet-label {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 5px;
+            border-radius: 5px;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+            z-index: 1000; /* Adjust the z-index as needed */
+        }
+
+        /* Style for mobile screens */
+        @media (max-width: 767px) {
+            #leaflet-label {
+                width: 100%;
+                left: 0;
+                transform: translateX(0);
+            }
+        }
+
+        /* Style for mobile screens */
+        @media (max-width: 767px) {
+            #searchContainer {
+                width: 100%;
+                left: 0;
+            }
+
+            #results {
+                width: 100%;
+                left: 0;
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+<!-- Map container -->
+<div id="map"></div>
+<!-- Label for finding food trucks -->
+<div id="leaflet-label">
+    Explore Food Trucks.
+    Enter coordinates or click on the map
+</div>
+<!-- Search container with form and results -->
+<div id="searchContainer" class="p-3 bg-white rounded shadow">
+    <!-- Form for latitude and longitude input -->
+    <form id="searchForm" class="mb-2">
+        <div class="form-group">
+            <input aria-label="lat" type="text" id="latitude" name="lat" value="" class="form-control"
+                   placeholder="Latitude"
+                   required>
+        </div>
+        <div class="form-group mt-2">
+            <input aria-label="lon" type="text" id="longitude" name="lon" value="" class="form-control"
+                   placeholder="Longitude"
+                   required>
+        </div>
+        <button type="submit" class="btn btn-primary mt-2">Search</button>
+    </form>
+
+    <!-- Results container -->
+    <div id="results" class="list-group p-0">
+    </div>
+</div>
+<!-- Include Leaflet, Bootstrap, and your custom JavaScript code -->
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Map initialization
+        let map = L.map('map').setView([37.7749, -122.4194], 18);
+        // Move zoom control to bottom right
+        L.control.zoom({position: 'bottomright'}).addTo(map);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        // Reference to the form
+        let searchForm = document.getElementById('searchForm');
+        let latitudeInput = document.getElementById('latitude');
+        let longitudeInput = document.getElementById('longitude');
+
+        // Array to store markers
+        let markers = [];
+
+        // Function to fetch food truck data and add markers
+        function fetchAndAddMarkers() {
+            // Clear existing markers
+            markers.forEach(marker => marker.removeFrom(map));
+            markers = [];
+            // Clear existing result divs
+            let resultsContainer = document.getElementById('results');
+            resultsContainer.innerHTML = '';
+
+            // Fetch food truck data from the API
+            fetch(`/api/foodtrucks/?lat=${latitudeInput.value}&lon=${longitudeInput.value}`)
+                .then(response => response.json())
+                .then(data => {
+                    let bounds = L.latLngBounds();
+                    // Remove old circleMarker
+                    let oldCircleMarker = document.querySelector('.blue-circle-marker');
+                    if (oldCircleMarker) {
+                        oldCircleMarker.remove();
+                    }
+
+                    // Add new circleMarker
+                    let circleMarker = L.circleMarker([latitudeInput.value, longitudeInput.value], {
+                        fillColor: 'blue',
+                        color: 'blue',
+                        radius: 10,
+
+                    }).addTo(map);
+                    markers.push(circleMarker);
+
+                    // Add markers for each food truck
+                    data.forEach(foodTruck => {
+                        let marker = L.marker([foodTruck.latitude, foodTruck.longitude]).addTo(map)
+                            .bindPopup(`<b>${foodTruck.applicant}</b><br>${foodTruck.location_description}`);
+                        markers.push(marker);
+                        bounds.extend(marker.getLatLng());
+                        // Create a corresponding result div
+                        let resultDiv = document.createElement('div');
+                        resultDiv.className = 'list-group-item list-group-item-action';
+                        resultDiv.innerHTML = `<b>${foodTruck.applicant}</b><br>${foodTruck.location_description}`;
+
+                        // Add an event listener to center the map on the marker when the result div is clicked
+                        resultDiv.addEventListener('click', function () {
+                            map.panTo(marker.getLatLng()); // Center the map on the marker
+                            marker.openPopup(); // Open the marker's popup
+                        });
+
+                        // Append the result div to the results container
+                        document.getElementById('results').appendChild(resultDiv);
+
+                    });
+
+                    // Fit the map bounds to include all markers
+                    map.fitBounds(bounds);
+
+                })
+                .catch(error => console.error('Error fetching food truck data:', error));
+        }
+
+        // Add a submit event listener to the form
+        searchForm.addEventListener('submit', function (event) {
+            // Prevent the default form submission
+            event.preventDefault();
+            // Add a red marker at the clicked location
+            fetchAndAddMarkers();
+        });
+
+        // Add a click event listener to the map
+        map.on('click', function (e) {
+            // Get the clicked coordinates
+            let latlng = e.latlng;
+
+            // Update the input fields with the clicked coordinates
+            latitudeInput.value = latlng.lat;
+            longitudeInput.value = latlng.lng;
+
+            fetchAndAddMarkers();
+        });
+
+    });
+</script>
+</body>
+</html>
